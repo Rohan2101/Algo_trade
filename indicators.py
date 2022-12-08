@@ -38,7 +38,7 @@ def RSI(data, period):
         RS = avg_gain / avg_loss
         
         RSI = 100.0 - (100.0 / ( 1.0 + RS ))
-        print(data)
+        #print(data)
         #print(avg_gain, avg_loss)
         #print(RSI)
         return RSI

@@ -59,13 +59,21 @@ def write_hist_data(symbol, file_name):
     #else:
     return print('Hist data has been written to main file')
 
+def write_hist_data_stocks(symbol, file_name):
+    data2 = yf.download(str(symbol) + '.NS', period= '90d', interval= '60m')
+    myutils.write_dataframe(file_name, data2)
+    #if data2 == None:
+    #    print('Error while adding hist data')
+    #else:
+    return print('Hist data has been written to main file')
+
 def read_data(filename):
     filename1 = filename +'.csv'
     data = myutils.read_dataframe(filename1)
     return data
 
 
-def Get_all_RSI_signals(data, llimit=20, hlimit=80, period=14):
+def Get_RSI_signals(data, llimit=20, hlimit=80, period=14):
     RSI = indicators.RSI(data,period)
     if RSI > hlimit:
         signal = -1
@@ -75,7 +83,7 @@ def Get_all_RSI_signals(data, llimit=20, hlimit=80, period=14):
         signal = 0
     return RSI
 
-def Get_RSI_signals(data, llimit=20, hlimit=80, period=14):
+def Get_all_RSI_signals(data, llimit=20, hlimit=80, period=14):
     RSI = indicators.RSI(data,period)
     if RSI > hlimit:
         signal = -1
@@ -100,7 +108,7 @@ def get_MACD_signalline(data, short_window = 20, long_window = 50, signal_window
     macd_data['signal_line'] = macd_data['MACD'].rolling(window = signal_window).mean()
 
     #signals = pd.DataFrame(index = macd_data.index)
-    signals= macd_data
+    signals= macd_data.copy()
     signals['buy_sell'] = 0.0
     signals['buy_sell'][long_window:] = np.where((macd_data.MACD)[long_window:]
                                             > 0, 1.0, 0.0)
@@ -114,12 +122,46 @@ def get_MACD_signalline(data, short_window = 20, long_window = 50, signal_window
     signals1['buy_sell'] = signals1['buy_sell'].diff()
     return signals1
 
+def plot_macd_buy_sell(macd_signal_line, signals, symbol):
+    """
+    Plot for macd price, shortma, longma, buy signal, sell signal
+    Input: data frame with all above information
+    Output: None
+    """
+    # putting all above together
+    fig = plt.figure(figsize=(15, 15))
+    plt.title(symbol)
+    # fig1
+    ax1 = fig.add_subplot(411, ylabel='Price in $')
+    macd_signal_line['price'].plot(ax=ax1, color='r', lw=2.)
+    macd_signal_line[['SMA', 'LMA']].plot(ax=ax1, lw=2.)
+    # fig2
+    ax2 = fig.add_subplot(412, ylabel='buy signal')
+    signals['price'].plot(ax=ax2, color='r', lw=2.)
+    ax2.plot(signals.loc[signals.buy_sell == 1.0].index, signals.price[signals.buy_sell == 1.0], '^', markersize=10,
+             color='m')
+    # fig3
+    ax3 = fig.add_subplot(413, ylabel='sell signal')
+    signals['price'].plot(ax=ax3, color='r', lw=2.)
+    ax3.plot(signals.loc[signals.buy_sell == -1.0].index, signals.price[signals.buy_sell == -1.0], 'v', markersize=10,
+             color='k')
+    # fig4
+    ax4 = fig.add_subplot(414, ylabel='buy sell signal')
+    signals['price'].plot(ax=ax4, color='r', lw=2.)
+    # add buy sell
+    ax4.plot(signals.loc[signals.buy_sell == 1.0].index, signals.price[signals.buy_sell == 1.0], '^', markersize=10,
+             color='g')
+    ax4.plot(signals.loc[signals.buy_sell == -1.0].index, signals.price[signals.buy_sell == -1.0], 'v', markersize=10,
+             color='k')
+    #
+    plt.show()
+
 def get_MACD_signal(data):
     data1 = get_MACD_signalline(data)
     return data1['buy_sell'].iloc[-1]
 
 def get_combined_signal(data):
-    x = Get_RSI_signals(data)
+    x = Get_all_RSI_signals(data)
     y1 = get_MACD_signalline(data)
     y = get_MACD_signal(y1)
     z = get_bb_signal(data)
@@ -135,12 +177,13 @@ def get_combined_signal(data):
 def get_bb_signals(data, period = 20, std = 2):
     bb_data = pd.DataFrame(index=data.index)
     bb_data['price'] = data['Close']
-
+    bb_data['Datetime'] = data['Datetime']
     bb_data['middleband'] = bb_data['price'].rolling(window=period).mean()
     bb_data['upperband'] = bb_data['middleband'] + std * (bb_data['price'].rolling(window=period).std())
     bb_data['lowerband'] = bb_data['middleband'] - std * (bb_data['price'].rolling(window=period).std())
     signals = pd.DataFrame(index=bb_data.index)
     signals.head()
+    signals['Datetime'] = bb_data['Datetime']
     signals['price'] = bb_data['price']
     signals['sell']= 0.0
     signals['buy']= 0.0
@@ -151,11 +194,24 @@ def get_bb_signals(data, period = 20, std = 2):
     signals.loc[signals['buy'] == -1.0,['buy']]=0
     signals.loc[signals['sell'] == 1.0,['sell']]=0
     signals['buy_sell'] = signals['buy'] + signals['sell']
-    return signals[['price', 'buy_sell']]
+
+    return signals[['Datetime','price', 'buy_sell']]
 
 def get_bb_signal(data, period = 20, std = 2):
     x = get_bb_signals(data, period, std)
     return x['buy_sell'].iloc[-1]
+
+def plot_bb_buy_sell(bb, signals):
+    """
+    Plot price, Bollinger band middle, lower, upper band with buy and sell signal
+    """
+    graph = plt.figure(figsize=(20,5))
+    ax1 = graph.add_subplot(111)
+    bb[['price','lowerband','upperband']].plot(ax = ax1,title ='Bollinger band Signals')
+    ax1.plot(signals.loc[signals.buy_sell == 1].index, signals.price[signals.buy_sell == 1], "^", markersize = 12, color = "g")
+    ax1.plot(signals.loc[signals.buy_sell == -1].index, signals.price[signals.buy_sell == -1], "v", markersize = 12, color = "m")
+    # plt.show()
+    plt.show()
 
 def get_Stochastic_signals(data, level=7):
     data['H-14'] = data['High'].shift(14)
@@ -168,6 +224,7 @@ def get_Stochastic_signals(data, level=7):
     data.loc[data['Slow Stochastic'] < level, ['sell_signal']] = 0.0
     data.loc[data['Slow Stochastic'] < -level, ['buy_signal']] = 1
     data.loc[data['Slow Stochastic'] > -level, ['buy_signal']] = 0
+    print(data.iloc[-20:-1])
     return data
 
 def get_Stochastic_signal(data, level=7):
